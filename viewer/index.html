@@ -1,0 +1,718 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Draw the Wind</title>
+<style>
+  :root {
+    --bg: #0b0d10;
+    --panel: #121519;
+    --line: #23282e;
+    --text: #d9d6cf;
+    --muted: #7c8187;
+    --accent: #e8c27a;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 13px/1.4 ui-sans-serif, -apple-system, "Helvetica Neue", sans-serif; }
+  body { display: grid; grid-template-columns: 280px 1fr; }
+  aside { background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; padding: 16px; }
+  h1 { font-size: 15px; font-weight: 600; letter-spacing: .02em; margin: 0 0 14px; }
+  h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted);
+    font-weight: 600; margin: 18px 0 8px; }
+  label { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 6px 0; white-space: nowrap; }
+  label span.v { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 44px; text-align: right; }
+  input[type=range] { width: 120px; accent-color: var(--accent); }
+  select, button, input[type=file]::file-selector-button {
+    background: #1a1e23; color: var(--text); border: 1px solid var(--line); border-radius: 5px;
+    padding: 4px 8px; font: inherit; cursor: pointer; }
+  select { width: 140px; }
+  button:hover, select:hover { border-color: #3a4048; }
+  .row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .seg button.on { border-color: var(--accent); color: var(--accent); }
+  .hint { color: var(--muted); font-size: 12px; }
+  main { position: relative; display: flex; flex-direction: column; min-width: 0; }
+  #stage-wrap { position: relative; flex: 1; display: flex; align-items: center; justify-content: center; padding: 16px; min-height: 0; }
+  #stage-wrap { gap: 16px; }
+  #stage, #orig { position: relative; flex: none; }
+  #orig { display: none; background: #000; }
+  #orig .tag { position: absolute; left: 8px; top: 6px; z-index: 2; color: var(--muted); font-size: 11px;
+    letter-spacing: .06em; text-transform: uppercase; text-shadow: 0 1px 2px #000; pointer-events: none; }
+  body.side #orig { display: block; }
+  #orig > video, #orig > canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  #stage > * { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #stage video { object-fit: fill; opacity: 0; pointer-events: none; }
+  #tip { position: absolute; inset: auto; pointer-events: none; background: rgba(10,12,14,.9);
+    border: 1px solid var(--line); border-radius: 5px; padding: 6px 8px; font-size: 12px;
+    white-space: nowrap; display: none; width: auto; height: auto; }
+  #bar { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-top: 1px solid var(--line); }
+  #bar input[type=range] { flex: 1; width: auto; }
+  #time { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 96px; text-align: right; }
+  #drop { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    color: var(--muted); text-align: center; padding: 24px; }
+  body.dragging #drop { background: rgba(232,194,122,.06); outline: 2px dashed var(--accent); outline-offset: -12px; }
+  #legend { margin: 10px 0 4px; padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: #0e1114; }
+  #legend .title { font-weight: 600; margin-bottom: 6px; }
+  #legend .bar { height: 10px; border-radius: 3px; }
+  #legend .ends { display: flex; justify-content: space-between; gap: 8px; margin-top: 4px;
+    color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  #legend .ends span:last-child { text-align: right; }
+  #legend .wheel-row { display: flex; align-items: center; gap: 12px; }
+  #legend .wheel { position: relative; width: 84px; height: 84px; flex: none; border-radius: 50%; }
+  #legend .wheel::after { content: ""; position: absolute; inset: 22px; border-radius: 50%; background: #0e1114; }
+  #legend .wheel b { position: absolute; z-index: 1; font-size: 12px; color: #111; font-weight: 700;
+    transform: translate(-50%, -50%); }
+  #legend p { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
+  @media (max-width: 720px) {
+    body { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+    aside { max-height: 45vh; border-right: 0; border-bottom: 1px solid var(--line); }
+  }
+</style>
+</head>
+<body>
+<aside>
+  <h1>draw the wind</h1>
+
+  <h2>Video</h2>
+  <label>Result <select id="pick"></select></label>
+  <label>Open file <input type="file" id="file" accept=".json" style="width:150px"></label>
+  <div class="hint" id="stats"></div>
+
+  <h2>Drawing</h2>
+  <div class="row seg" id="mode">
+    <button data-v="trace" class="on">Trace</button>
+    <button data-v="trails">Trails</button>
+  </div>
+  <label>Trail length <input type="range" id="trail" min="3" max="120" value="24"><span class="v"></span></label>
+  <label>Line width <input type="range" id="width" min="0.3" max="4" step="0.1" value="1"><span class="v"></span></label>
+  <label>Opacity <input type="range" id="alpha" min="0.02" max="1" step="0.01" value="0.5"><span class="v"></span></label>
+  <label>Additive glow <input type="checkbox" id="additive" checked></label>
+  <div class="hint" id="glowHint">Brighter areas are where many paths overlap</div>
+
+  <h2>Color</h2>
+  <label>Color by
+    <select id="colorBy">
+      <option value="mono">single color</option>
+      <option value="direction">direction of motion</option>
+      <option value="speed">speed</option>
+      <option value="frequency">sway frequency</option>
+      <option value="amplitude">sway amplitude</option>
+      <option value="time">time of appearance</option>
+    </select></label>
+  <label>Palette
+    <select id="palette">
+      <option value="ember">ember</option>
+    </select></label>
+  <div id="legend"></div>
+  <label>Line color <input type="color" id="mono" value="#f2efe6"></label>
+  <label>Background <input type="color" id="bg" value="#0b0d10"></label>
+
+  <h2>Filter motion</h2>
+  <label>Min freq <input type="range" id="fmin" min="0" max="100" value="0"><span class="v"></span></label>
+  <label>Max freq <input type="range" id="fmax" min="0" max="100" value="100"><span class="v"></span></label>
+  <label>Min motion <input type="range" id="amin" min="0" max="100" value="0"><span class="v"></span></label>
+  <label>Density <input type="range" id="density" min="1" max="100" value="100"><span class="v"></span></label>
+  <label>Hover inspect <input type="checkbox" id="inspect" checked></label>
+  <!-- <div class="hint">Branches tend to sway slowly (&lt;1 Hz); leaves flutter faster. With hover inspect on, point at a line to see its stats.</div> -->
+
+  <h2>Footage</h2>
+  <label>Side by side <input type="checkbox" id="side" checked></label>
+  <label>Overlay <input type="range" id="footage" min="0" max="1" step="0.01" value="0"><span class="v"></span></label>
+
+  <h2>Export</h2>
+  <div class="row"><button id="png">Save PNG</button><button id="rec">Record video</button></div>
+</aside>
+
+<main>
+  <div id="stage-wrap">
+    <div id="orig">
+      <span class="tag">footage</span>
+      <video id="origVideo" muted playsinline preload="auto"></video>
+      <canvas id="origHover"></canvas>
+    </div>
+    <div id="stage">
+      <video id="video" muted playsinline preload="auto"></video>
+      <canvas id="acc"></canvas>
+      <canvas id="hover"></canvas>
+      <div id="tip"></div>
+    </div>
+    <div id="drop">Run <code>python trace_wind.py your_video.mp4</code>, then serve the project folder<br>
+    (<code>python -m http.server</code>) and open <code>/viewer/</code> — or drop a tracks.json here.</div>
+  </div>
+  <div id="bar">
+    <button id="play">Play</button>
+    <input type="range" id="scrub" min="0" max="0" value="0">
+    <label style="margin:0">Speed <input type="range" id="speed" min="0.1" max="2" step="0.05" value="1" style="width:80px"><span class="v"></span></label>
+    <label style="margin:0">Loop <input type="checkbox" id="loop" checked></label>
+    <span id="time">0.00 s</span>
+  </div>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const BUCKETS = 32;
+// fallback only: the real palettes come from ../palettes.json (shared with trace_wind.py)
+let PALETTES = {
+  ember: ["#2d0f4a", "#8c2981", "#de4968", "#fe9f6d", "#fcfdbf"],
+  ice: ["#0b1a2a", "#3c5e8c", "#6bb9d4", "#e8f5f9", "#fef3c7"],
+  moss: ["#1b4332", "#40916c", "#95d5b2", "#e9f5db"],
+  spectrum: null, // hue wheel
+};
+
+let D = null;          // loaded result
+let T = [];            // tracks: {s, e, p: Float32Array, f, a, v, n}
+let active = [];       // active[k] = Int32Array of track indices with a segment ending at frame k
+let visible = null;    // Uint8Array per track
+let ranges = {};
+let t = 0, clock = 0, playing = false, lastTs = 0;
+let baseUrl = "";
+let hoverIdx = -1;
+
+const acc = $("acc"), hov = $("hover"), video = $("video"), origVideo = $("origVideo"), origHov = $("origHover");
+const ctx = acc.getContext("2d"), hctx = hov.getContext("2d"), octx = origHov.getContext("2d");
+const VIDEOS = [video, origVideo];
+let res = 1; // canvas px per data px
+
+//   settings
+
+const S = {};
+function readSettings() {
+  for (const id of ["trail", "width", "alpha", "fmin", "fmax", "amin", "density", "speed", "footage"])
+    S[id] = +$(id).value;
+  S.additive = $("additive").checked;
+  S.colorBy = $("colorBy").value;
+  S.palette = $("palette").value;
+  S.mono = $("mono").value;
+  S.bg = $("bg").value;
+  S.mode = document.querySelector("#mode .on").dataset.v;
+  S.loop = $("loop").checked;
+  S.side = $("side").checked;
+  S.inspect = $("inspect").checked;
+  document.body.classList.toggle("side", S.side && hasFootage());
+}
+
+// frequency sliders are log-scaled between the data's min and max
+function sliderToFreq(v) {
+  const { flo, fhi } = ranges;
+  return Math.exp(Math.log(flo) + (Math.log(fhi) - Math.log(flo)) * v / 100);
+}
+
+function updateLabels() {
+  const set = (id, txt) => { $(id).parentElement.querySelector(".v").textContent = txt; };
+  set("trail", S.trail + " f");
+  set("width", S.width.toFixed(1));
+  set("alpha", S.alpha.toFixed(2));
+  set("speed", S.speed.toFixed(2) + "×");
+  set("footage", Math.round(S.footage * 100) + "%");
+  set("density", S.density + "%");
+  if (D) {
+    set("fmin", sliderToFreq(S.fmin).toFixed(2) + " Hz");
+    set("fmax", sliderToFreq(S.fmax).toFixed(2) + " Hz");
+    set("amin", (S.amin / 100 * ranges.ahi).toFixed(1) + " px");
+  }
+  $("glowHint").style.display = S.additive ? "" : "none";
+  $("trail").parentElement.style.opacity = S.mode === "trails" ? 1 : 0.4;
+  $("mono").parentElement.style.opacity = S.colorBy === "mono" ? 1 : 0.4;
+  $("palette").parentElement.style.opacity = S.colorBy === "mono" || S.colorBy === "direction" ? 0.4 : 1;
+}
+
+//   colors
+
+function hexRgb(h) { h = h.replace("#", ""); return [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16)); }
+function lerpStops(stops, x) {
+  const p = Math.min(Math.max(x, 0), 1) * (stops.length - 1);
+  const i = Math.min(Math.floor(p), stops.length - 2), f = p - i;
+  const a = hexRgb(stops[i]), b = hexRgb(stops[i + 1]);
+  return a.map((v, j) => Math.round(v + (b[j] - v) * f));
+}
+function hsl2rgb(h, s, l) {
+  const k = n => (n + h * 12) % 12, a = s * Math.min(l, 1 - l);
+  return [0, 8, 4].map(n => Math.round(255 * (l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1)))));
+}
+let bucketColors = [], bucketRgb = [];
+function buildColors() {
+  bucketColors = []; bucketRgb = [];
+  for (let b = 0; b < BUCKETS; b++) {
+    const x = b / (BUCKETS - 1);
+    let rgb;
+    if (S.colorBy === "mono") rgb = hexRgb(S.mono);
+    else if (S.colorBy === "direction" || S.palette === "spectrum") rgb = hsl2rgb(b / BUCKETS, 0.7, 0.68);
+    else rgb = lerpStops(PALETTES[S.palette], 0.15 + 0.85 * x);
+    bucketColors.push(`rgba(${rgb[0]},${rgb[1]},${rgb[2]},${S.alpha})`);
+    bucketRgb.push(`rgb(${rgb[0]},${rgb[1]},${rgb[2]})`);
+  }
+  renderLegend();
+}
+
+//   legend
+
+const LEGEND = {
+  speed: { title: "Speed at each moment", lo: "slow", hi: "fast",
+    note: "Each segment is colored by how fast that point was moving right then, so one path can shift color as gusts come and go." },
+  frequency: { title: "Sway frequency (per path)", lo: "slow sway · branches", hi: "fast flutter · leaves",
+    note: "How many times per second the path swings back and forth. Paths too short to measure use the middle color." },
+  amplitude: { title: "Sway amplitude (per path)", lo: "small motion", hi: "large motion",
+    note: "How far the path wanders from its resting position." },
+  time: { title: "Time of appearance (per path)", lo: "early in clip", hi: "late in clip",
+    note: "When the tracker first picked up the point." },
+};
+
+function renderLegend() {
+  const el = $("legend");
+  if (S.colorBy === "mono") {
+    el.innerHTML = `<div class="title">Single color</div><p>Every path uses the line color below; only density and brightness vary.</p>`;
+    return;
+  }
+  if (S.colorBy === "direction") {
+    // conic-gradient starts at 12 o'clock going clockwise; hue 0 = moving right (3 o'clock)
+    const stops = [];
+    for (let deg = 0; deg <= 360; deg += 15) {
+      const rgb = hsl2rgb((((deg - 90) / 360) % 1 + 1) % 1, 0.7, 0.68);
+      stops.push(`rgb(${rgb}) ${deg}deg`);
+    }
+    const lbl = (txt, x, y) => `<b style="left:${x}%;top:${y}%">${txt}</b>`;
+    el.innerHTML = `<div class="title">Direction of motion</div>
+      <div class="wheel-row">
+        <div class="wheel" style="background:conic-gradient(${stops.join(",")})">
+          ${lbl("↑", 50, 13)}${lbl("→", 87, 50)}${lbl("↓", 50, 87)}${lbl("←", 13, 50)}
+        </div>
+        <p style="margin:0">A segment takes the color of the side of the wheel it is moving toward. A leaf swinging back and forth alternates between opposite colors.</p>
+      </div>`;
+    return;
+  }
+  const L = LEGEND[S.colorBy];
+  let lo = "", hi = "";
+  if (D) {
+    const fps = D.meta.fps;
+    if (S.colorBy === "speed") { lo = "0 px/s"; hi = `≥ ${Math.round(ranges.seg * fps)} px/s`; }
+    if (S.colorBy === "frequency") { lo = `≤ ${ranges.flo.toFixed(2)} Hz`; hi = `≥ ${ranges.fhi.toFixed(1)} Hz`; }
+    if (S.colorBy === "amplitude") { lo = `≤ ${ranges.alo.toFixed(1)} px`; hi = `≥ ${ranges.ahi.toFixed(1)} px`; }
+    if (S.colorBy === "time") { lo = "0 s"; hi = `${(D.meta.frames / fps).toFixed(1)} s`; }
+  }
+  el.innerHTML = `<div class="title">${L.title}</div>
+    <div class="bar" style="background:linear-gradient(to right,${bucketRgb.join(",")})"></div>
+    <div class="ends"><span>${L.lo}<br>${lo}</span><span>${L.hi}<br>${hi}</span></div>
+    <p>${L.note}</p>`;
+}
+
+// bucket for the segment of track i ending at local index j
+function bucketOf(i, j, dx, dy) {
+  const tr = T[i];
+  let x;
+  switch (S.colorBy) {
+    case "mono": return 0;
+    case "direction": return Math.floor(((Math.atan2(dy, dx) / (2 * Math.PI)) + 1) % 1 * BUCKETS) % BUCKETS;
+    case "speed": x = Math.hypot(dx, dy) / ranges.seg; break;
+    case "frequency": x = tr.f == null ? 0.5 : (Math.log(tr.f) - Math.log(ranges.flo)) / (Math.log(ranges.fhi) - Math.log(ranges.flo)); break;
+    case "amplitude": x = (tr.a - ranges.alo) / (ranges.ahi - ranges.alo); break;
+    case "time": x = tr.s / D.meta.frames; break;
+  }
+  return Math.max(0, Math.min(BUCKETS - 1, Math.floor(x * BUCKETS)));
+}
+
+//   data
+
+function percentile(arr, q) {
+  const s = Float64Array.from(arr).sort();
+  return s.length ? s[Math.min(s.length - 1, Math.floor(q * s.length))] : 0;
+}
+
+function prepare(data) {
+  D = data;
+  const F = data.meta.frames;
+  T = data.tracks.map((tr, i) => {
+    const p = Float32Array.from(tr.p);
+    return { s: tr.s, e: tr.s + p.length / 2 - 1, p, f: tr.f, a: tr.a, v: tr.v, h: hash(i) };
+  });
+  // index tracks by frame for incremental drawing
+  const counts = new Int32Array(F + 1);
+  for (const tr of T) for (let k = tr.s + 1; k <= Math.min(tr.e, F); k++) counts[k]++;
+  active = Array.from({ length: F + 1 }, (_, k) => new Int32Array(counts[k]));
+  counts.fill(0);
+  T.forEach((tr, i) => { for (let k = tr.s + 1; k <= Math.min(tr.e, F); k++) active[k][counts[k]++] = i; });
+
+  const fs = T.map(tr => tr.f).filter(f => f > 0), as = T.map(tr => tr.a);
+  const segs = [];
+  for (let n = 0; n < 4000; n++) {
+    const tr = T[(n * 7919) % T.length], j = 1 + (n % Math.max(1, tr.p.length / 2 - 1));
+    if (2 * j + 1 < tr.p.length) segs.push(Math.hypot(tr.p[2 * j] - tr.p[2 * j - 2], tr.p[2 * j + 1] - tr.p[2 * j - 1]));
+  }
+  ranges = {
+    flo: Math.max(0.05, fs.reduce((m, f) => Math.min(m, f), 1)),
+    fhi: fs.reduce((m, f) => Math.max(m, f), 2) + 1e-3,
+    alo: percentile(as, 0.05), ahi: percentile(as, 0.98), seg: percentile(segs, 0.95) || 1,
+  };
+  $("fmin").value = 0; $("fmax").value = 100; $("amin").value = 0;
+
+  const { width: W, height: H } = data.meta;
+  res = Math.min(2, Math.max(1, (window.devicePixelRatio || 1)));
+  for (const c of [acc, hov, origHov]) { c.width = W * res; c.height = H * res; }
+  $("scrub").max = F - 1;
+  $("drop").style.display = "none";
+
+  for (const v of VIDEOS) {
+    v.removeAttribute("src");
+    if (baseUrl && data.meta.footage) v.src = baseUrl + data.meta.footage;
+  }
+  $("footage").disabled = $("side").disabled = !hasFootage();
+
+  // open on the finished drawing; Play starts it over
+  readSettings(); computeVisible(); buildColors(); updateLabels(); renderAt(F - 1);
+  clock = F - 1;
+  fitStage(); seekVideo(t);
+}
+
+function hash(i) { // stable pseudo-random 0..1 for density thinning
+  let x = Math.imul(i ^ 0x9e3779b9, 0x85ebca6b); x ^= x >>> 13; x = Math.imul(x, 0xc2b2ae35); x ^= x >>> 16;
+  return (x >>> 0) / 4294967296;
+}
+
+function computeVisible() {
+  visible = new Uint8Array(T.length);
+  const full = S.fmin === 0 && S.fmax === 100;
+  const flo = sliderToFreq(S.fmin), fhi = sliderToFreq(S.fmax), amin = S.amin / 100 * ranges.ahi;
+  let n = 0;
+  T.forEach((tr, i) => {
+    const okF = full || (tr.f != null && tr.f >= flo && tr.f <= fhi);
+    if (okF && tr.a >= amin && tr.h < S.density / 100) { visible[i] = 1; n++; }
+  });
+  $("stats").textContent = `${n.toLocaleString()} of ${T.length.toLocaleString()} paths`;
+}
+
+//   drawing
+
+function drawStep(k) {
+  const ids = active[k];
+  if (!ids) return;
+  const paths = new Array(BUCKETS);
+  for (let n = 0; n < ids.length; n++) {
+    const i = ids[n];
+    if (!visible[i]) continue;
+    const tr = T[i], j = k - tr.s, p = tr.p;
+    const x0 = p[2 * j - 2], y0 = p[2 * j - 1], x1 = p[2 * j], y1 = p[2 * j + 1];
+    const b = bucketOf(i, j, x1 - x0, y1 - y0);
+    const path = paths[b] || (paths[b] = new Path2D());
+    path.moveTo(x0, y0); path.lineTo(x1, y1);
+  }
+  ctx.globalCompositeOperation = S.additive ? "lighter" : "source-over";
+  for (let b = 0; b < BUCKETS; b++) if (paths[b]) { ctx.strokeStyle = bucketColors[b]; ctx.stroke(paths[b]); }
+}
+
+function fade() {
+  ctx.globalCompositeOperation = "destination-out";
+  ctx.fillStyle = `rgba(0,0,0,${1 - Math.pow(0.02, 1 / S.trail)})`;
+  ctx.fillRect(0, 0, D.meta.width, D.meta.height);
+}
+
+function beginCanvas() {
+  ctx.setTransform(res, 0, 0, res, 0, 0);
+  ctx.globalCompositeOperation = "source-over";
+  ctx.clearRect(0, 0, D.meta.width, D.meta.height);
+  ctx.lineWidth = S.width; ctx.lineCap = "round"; ctx.lineJoin = "round";
+}
+
+function renderAt(k) {
+  if (!D) return;
+  beginCanvas();
+  const from = S.mode === "trace" ? 1 : Math.max(1, k - S.trail * 2);
+  for (let f = from; f <= k; f++) { if (S.mode === "trails") fade(); drawStep(f); }
+  t = k;
+  syncUi();
+}
+
+function advanceTo(k) {
+  if (k < t || k - t > 60) return renderAt(k);
+  ctx.lineWidth = S.width;
+  for (let f = t + 1; f <= k; f++) { if (S.mode === "trails") fade(); drawStep(f); }
+  t = k;
+  syncUi();
+}
+
+function syncUi() {
+  $("scrub").value = t;
+  $("time").textContent = `${(t / D.meta.fps).toFixed(2)} s · ${t}`;
+  document.body.style.background = S.bg;
+  $("stage").style.background = S.bg;
+  drawHover();
+}
+
+//   playback
+
+function loop(ts) {
+  requestAnimationFrame(loop);
+  if (!D || !playing) { lastTs = ts; return; }
+  const dt = Math.min(0.1, (ts - lastTs) / 1000); lastTs = ts;
+  clock += dt * D.meta.fps * S.speed;
+  let k = Math.floor(clock);
+  if (k >= D.meta.frames - 1) {
+    if (rec) { advanceTo(D.meta.frames - 1); composeFrame(); stopRecording(); return; }
+    if (S.loop) { clock = 0; renderAt(0); seekVideo(0); return; }
+    k = D.meta.frames - 1; setPlaying(false);
+  }
+  if (k !== t) advanceTo(k);
+  if (rec) composeFrame();
+  for (const v of activeVideos())
+    if (Math.abs(v.currentTime - t / D.meta.fps) > 0.25) v.currentTime = t / D.meta.fps;
+}
+requestAnimationFrame(loop);
+
+function hasFootage() { return !!video.getAttribute("src"); }
+function activeVideos() {
+  if (!hasFootage()) return [];
+  return [...(S.side ? [origVideo] : []), ...(S.footage > 0 ? [video] : [])];
+}
+function seekVideo(k) { if (hasFootage()) for (const v of VIDEOS) v.currentTime = k / D.meta.fps; }
+function syncVideos() {
+  const on = activeVideos();
+  for (const v of VIDEOS) {
+    v.playbackRate = S.speed;
+    if (playing && on.includes(v)) v.play().catch(() => {}); else v.pause();
+  }
+}
+
+function setPlaying(on) {
+  playing = on && !!D;
+  if (playing && t >= D.meta.frames - 1) { clock = 0; renderAt(0); seekVideo(0); }
+  $("play").textContent = playing ? "Pause" : "Play";
+  syncVideos();
+}
+
+//   hover inspect
+
+function trackPos(tr, k) {
+  const j = Math.min(k, tr.e) - tr.s;
+  return [tr.p[2 * j], tr.p[2 * j + 1]];
+}
+
+function pick(mx, my) {
+  let best = -1, bestD = (14 / stageScale()) ** 2;
+  for (let i = 0; i < T.length; i++) {
+    const tr = T[i];
+    if (!visible[i] || tr.s > t) continue;
+    if (S.mode === "trails" && tr.e < t - S.trail) continue;
+    const [x, y] = trackPos(tr, t);
+    const d = (x - mx) ** 2 + (y - my) ** 2;
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  return best;
+}
+
+function drawHover() {
+  for (const c of [hctx, octx]) { c.setTransform(res, 0, 0, res, 0, 0); c.clearRect(0, 0, hov.width, hov.height); }
+  const tip = $("tip");
+  if (hoverIdx < 0) { tip.style.display = "none"; return; }
+  const tr = T[hoverIdx], end = Math.min(t, tr.e) - tr.s;
+  const [x, y] = trackPos(tr, t);
+  // same highlight on the footage, so you can see which leaf the path follows
+  for (const c of [hctx, octx]) {
+    c.beginPath();
+    for (let j = 0; j <= end; j++) c[j ? "lineTo" : "moveTo"](tr.p[2 * j], tr.p[2 * j + 1]);
+    c.strokeStyle = "#fff"; c.lineWidth = 1.6 / stageScale() + S.width; c.stroke();
+    c.fillStyle = "#e8c27a"; c.beginPath(); c.arc(x, y, 4 / stageScale(), 0, 7); c.fill();
+  }
+  const life = (tr.e - tr.s) / D.meta.fps;
+  tip.innerHTML = `Path #${hoverIdx}<br>` + `Path life ${life.toFixed(1)} s<br>` +
+    `Sway ${tr.f == null ? "–" : tr.f.toFixed(2) + " Hz"}<br>` + 
+    `Amplitude ${tr.a.toFixed(1)} px<br>` +
+    `Mean speed ${tr.v.toFixed(0)} px/s`;
+  tip.style.display = "block";
+  const sc = stageScale(), stageW = $("stage").clientWidth;
+  tip.style.left = Math.min(x * sc + 12, stageW - 190) + "px";
+  tip.style.top = (y * sc + 12) + "px";
+}
+
+hov.addEventListener("mousemove", (e) => {
+  if (!D || !S.inspect) return;
+  const r = hov.getBoundingClientRect(), sc = stageScale();
+  const i = pick((e.clientX - r.left) / sc, (e.clientY - r.top) / sc);
+  if (i !== hoverIdx) { hoverIdx = i; drawHover(); }
+});
+hov.addEventListener("mouseleave", () => { hoverIdx = -1; drawHover(); });
+
+// layout
+
+function stageScale() { return D ? $("stage").clientWidth / D.meta.width : 1; }
+function fitStage() {
+  if (!D) return;
+  const wrap = $("stage-wrap"), W = D.meta.width, H = D.meta.height, gap = 16;
+  const cw = wrap.clientWidth - 32, ch = wrap.clientHeight - 32;
+  let s = Math.min(cw / W, ch / H), dir = "row";
+  if (S.side && hasFootage()) {
+    // put the two panels next to each other or stacked, whichever lets them be bigger
+    const across = Math.min((cw - gap) / (2 * W), ch / H), stacked = Math.min(cw / W, (ch - gap) / (2 * H));
+    s = Math.max(across, stacked);
+    dir = across >= stacked ? "row" : "column";
+  }
+  wrap.style.flexDirection = dir;
+  for (const id of ["stage", "orig"]) {
+    $(id).style.width = W * s + "px";
+    $(id).style.height = H * s + "px";
+  }
+}
+window.addEventListener("resize", fitStage);
+
+//   controls
+
+function setSeg(group, v) {
+  document.querySelectorAll(`#${group} button`).forEach(b => b.classList.toggle("on", b.dataset.v === v));
+}
+document.querySelectorAll(".seg").forEach(g => g.addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  setSeg(g.id, b.dataset.v);
+  onChange(true);
+}));
+
+function onChange(redraw) {
+  readSettings();
+  if (S.fmin > S.fmax) { $("fmax").value = S.fmin; S.fmax = S.fmin; }
+  updateLabels();
+  if (!D) return buildColors();
+  computeVisible(); buildColors();
+  if (redraw) renderAt(t); else syncUi();
+}
+for (const id of ["trail", "width", "alpha", "fmin", "fmax", "amin", "density", "additive", "colorBy", "palette", "mono"])
+  $(id).addEventListener("input", () => onChange(true));
+for (const id of ["bg", "loop"]) $(id).addEventListener("input", () => onChange(false));
+$("inspect").addEventListener("input", () => { hoverIdx = -1; onChange(false); });
+$("speed").addEventListener("input", () => { onChange(false); syncVideos(); });
+$("footage").addEventListener("input", () => {
+  onChange(false);
+  video.style.opacity = S.footage;
+  seekVideo(t); syncVideos();
+});
+$("side").addEventListener("input", () => { onChange(false); fitStage(); seekVideo(t); syncVideos(); });
+$("scrub").addEventListener("input", () => { if (!D) return; clock = +$("scrub").value; renderAt(clock); seekVideo(clock); });
+$("play").addEventListener("click", () => setPlaying(!playing));
+document.addEventListener("keydown", (e) => {
+  if (e.code === "Space" && e.target.tagName !== "SELECT") { e.preventDefault(); setPlaying(!playing); }
+});
+
+//   video export
+
+// e.g. "01-amp": clip name + the current Color by setting
+function exportName() {
+  const tag = { mono: "mono", direction: "direction", speed: "speed", frequency: "freq", amplitude: "amp", time: "time" }[S.colorBy];
+  return `${D.meta.name}-${tag}`;
+}
+
+let rec = null; // {recorder, ctx, chunks, side, pw, ph, dx, dy, ext}
+
+function pickMime() {
+  const types = ["video/mp4;codecs=avc1.640033", "video/mp4", "video/webm;codecs=vp9", "video/webm"];
+  return types.find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m));
+}
+
+function composeFrame() {
+  const o = rec.ctx, { pw, ph, dx, dy } = rec;
+  o.fillStyle = S.bg; o.fillRect(0, 0, o.canvas.width, o.canvas.height);
+  if (rec.side && origVideo.readyState >= 2) o.drawImage(origVideo, 0, 0, pw, ph);
+  if (S.footage > 0 && video.readyState >= 2) {
+    o.globalAlpha = S.footage; o.drawImage(video, dx, dy, pw, ph); o.globalAlpha = 1;
+  }
+  o.drawImage(acc, dx, dy, pw, ph);
+}
+
+function startRecording() {
+  const mime = pickMime();
+  if (!mime) { alert("This browser can't record canvas video. Try Chrome or Safari."); return; }
+  const W = D.meta.width, H = D.meta.height;
+  const side = S.side && hasFootage();
+  const across = $("stage-wrap").style.flexDirection !== "column";
+  // keep the recording at most ~1920 px on its long side; encoders need even sizes
+  const k = Math.min(1, 1920 / (side && across ? 2 * W : side ? 2 * H : Math.max(W, H)));
+  const even = (n) => Math.round(n / 2) * 2;
+  const pw = even(W * k), ph = even(H * k);
+  const out = document.createElement("canvas");
+  out.width = side && across ? pw * 2 : pw;
+  out.height = side && !across ? ph * 2 : ph;
+  rec = { ctx: out.getContext("2d"), chunks: [], side, pw, ph,
+          dx: side && across ? pw : 0, dy: side && !across ? ph : 0, ext: mime.startsWith("video/mp4") ? "mp4" : "webm" };
+  rec.recorder = new MediaRecorder(out.captureStream(D.meta.fps), { mimeType: mime, videoBitsPerSecond: 16e6 });
+  rec.recorder.ondataavailable = (e) => e.data.size && rec.chunks.push(e.data);
+  rec.recorder.onstop = () => {
+    const a = document.createElement("a");
+    a.download = `${exportName()}.${rec.ext}`;
+    a.href = URL.createObjectURL(new Blob(rec.chunks, { type: mime }));
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    rec = null;
+    $("rec").textContent = "Record video";
+  };
+  // start clean from frame 0
+  clock = 0; renderAt(0); seekVideo(0);
+  composeFrame();
+  rec.recorder.start(1000);
+  $("rec").textContent = "Stop recording";
+  setPlaying(true);
+}
+
+function stopRecording() {
+  if (!rec) return;
+  setPlaying(false);
+  rec.recorder.stop();
+}
+
+$("rec").addEventListener("click", () => { if (!D) return; rec ? stopRecording() : startRecording(); });
+
+$("png").addEventListener("click", () => {
+  if (!D) return;
+  const out = document.createElement("canvas");
+  out.width = acc.width; out.height = acc.height;
+  const o = out.getContext("2d");
+  o.fillStyle = S.bg; o.fillRect(0, 0, out.width, out.height);
+  if (S.footage > 0 && video.readyState >= 2) { o.globalAlpha = S.footage; o.drawImage(video, 0, 0, out.width, out.height); o.globalAlpha = 1; }
+  o.drawImage(acc, 0, 0);
+  const a = document.createElement("a");
+  a.download = `${exportName()}.png`;
+  a.href = out.toDataURL("image/png");
+  a.click();
+});
+
+//   loading
+
+async function loadUrl(url) {
+  baseUrl = url.slice(0, url.lastIndexOf("/") + 1);
+  setPlaying(false);
+  prepare(await (await fetch(url)).json());
+}
+async function loadFile(file) {
+  baseUrl = "";  // footage can't be resolved from a dropped file
+  setPlaying(false);
+  prepare(JSON.parse(await file.text()));
+}
+$("file").addEventListener("change", (e) => e.target.files[0] && loadFile(e.target.files[0]));
+$("pick").addEventListener("change", (e) => e.target.value && loadUrl(e.target.value));
+document.addEventListener("dragover", (e) => { e.preventDefault(); document.body.classList.add("dragging"); });
+document.addEventListener("dragleave", () => document.body.classList.remove("dragging"));
+document.addEventListener("drop", (e) => {
+  e.preventDefault(); document.body.classList.remove("dragging");
+  const f = e.dataTransfer.files[0]; if (f) loadFile(f);
+});
+
+async function loadPalettes() {
+  try {
+    const shared = await (await fetch("../palettes.json", { cache: "no-store" })).json();
+    delete shared.mono; // single color has its own picker
+    PALETTES = { ...shared, spectrum: null };
+  } catch { /* opened without a server: keep the built-in fallback */ }
+  const sel = $("palette"), cur = sel.value;
+  sel.innerHTML = Object.keys(PALETTES).map(k => `<option value="${k}">${k}</option>`).join("");
+  sel.value = PALETTES.hasOwnProperty(cur) ? cur : Object.keys(PALETTES)[0];
+}
+
+(async function init() {
+  await loadPalettes();
+  readSettings(); updateLabels(); buildColors();
+  const outDir = new URLSearchParams(location.search).get("out") || "../out/";
+  try {
+    const list = await (await fetch(outDir + "index.json")).json();
+    $("pick").innerHTML = list.map(r => `<option value="${outDir}${r.tracks}">${r.name} (${r.count})</option>`).join("");
+    if (list.length) loadUrl(outDir + list[0].tracks);
+  } catch {
+    $("pick").innerHTML = `<option value="">no out/index.json found</option>`;
+  }
+})();
+</script>
+</body>
+</html>

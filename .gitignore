@@ -1,0 +1,7 @@
+out*/
+videos/
+__pycache__/
+.DS_Store
+/videos
+/out
+/output
