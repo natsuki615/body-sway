@@ -72,11 +72,12 @@
 </head>
 <body>
 <aside>
-  <h1>draw the wind</h1>
+  <h1>body sway</h1>
 
   <h2>Video</h2>
   <label>Result <select id="pick"></select></label>
-  <label>Open file <input type="file" id="file" accept=".json" style="width:150px"></label>
+  <label>Open file <input type="file" id="file" accept=".json,video/*" multiple style="width:150px"></label>
+  <div class="hint">tracks.json, its video, or both</div>
   <div class="hint" id="stats"></div>
 
   <h2>Drawing</h2>
@@ -138,7 +139,8 @@
       <div id="tip"></div>
     </div>
     <div id="drop">Run <code>python trace_wind.py your_video.mp4</code>, then serve the project folder<br>
-    (<code>python -m http.server</code>) and open <code>/viewer/</code> — or drop a tracks.json here.</div>
+    (<code>python -m http.server</code>) and open <code>localhost:8000</code> — or drop a tracks.json here,<br>
+    together with its footage.mp4 to see the video too.</div>
   </div>
   <div id="bar">
     <button id="play">Play</button>
@@ -351,6 +353,7 @@ function prepare(data) {
   $("scrub").max = F - 1;
   $("drop").style.display = "none";
 
+  if (localFootage) { URL.revokeObjectURL(localFootage); localFootage = null; }
   for (const v of VIDEOS) {
     v.removeAttribute("src");
     if (baseUrl && data.meta.footage) v.src = baseUrl + data.meta.footage;
@@ -676,18 +679,39 @@ async function loadUrl(url) {
   setPlaying(false);
   prepare(await (await fetch(url)).json());
 }
-async function loadFile(file) {
-  baseUrl = "";  // footage can't be resolved from a dropped file
+let localFootage = null; // object URL of a video opened from disk
+
+// a local file can't point at its footage.mp4, so the video is picked alongside it
+function attachFootage(file) {
   setPlaying(false);
-  prepare(JSON.parse(await file.text()));
+  if (localFootage) URL.revokeObjectURL(localFootage);
+  localFootage = URL.createObjectURL(file);
+  for (const v of VIDEOS) v.src = localFootage;
+  $("footage").disabled = $("side").disabled = false;
+  readSettings(); fitStage(); seekVideo(t);
 }
-$("file").addEventListener("change", (e) => e.target.files[0] && loadFile(e.target.files[0]));
+
+async function loadFiles(files) {
+  files = [...files];
+  const json = files.find(f => f.name.toLowerCase().endsWith(".json"));
+  const vid = files.find(f => f.type.startsWith("video/"));
+  if (!json && !vid) return;
+  if (json) {
+    baseUrl = "";
+    setPlaying(false);
+    prepare(JSON.parse(await json.text()));
+  }
+  if (!vid) return;
+  if (!D) { $("drop").textContent = "Open a tracks.json first, then add its video."; return; }
+  attachFootage(vid);
+}
+$("file").addEventListener("change", (e) => { loadFiles(e.target.files); e.target.value = ""; });
 $("pick").addEventListener("change", (e) => e.target.value && loadUrl(e.target.value));
 document.addEventListener("dragover", (e) => { e.preventDefault(); document.body.classList.add("dragging"); });
 document.addEventListener("dragleave", () => document.body.classList.remove("dragging"));
 document.addEventListener("drop", (e) => {
   e.preventDefault(); document.body.classList.remove("dragging");
-  const f = e.dataTransfer.files[0]; if (f) loadFile(f);
+  loadFiles(e.dataTransfer.files);
 });
 
 async function loadPalettes() {

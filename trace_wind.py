@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""draw the wind — track moving points in tree/leaf footage and draw their paths.
+"""body sway — track moving points in tree/leaf footage and draw their paths.
 
     python trace_wind.py videos/*.mp4                # default: sparse LK tracking
     python trace_wind.py clip.mov --method dis       # denser, better on soft/blurry foliage
@@ -11,7 +11,7 @@ Each video produces out/<name>/ with:
     tracks.json   every trajectory + per-track stats (for the viewer)
     footage.mp4   the processed (resized / stabilized) frames, for the viewer underlay
     preview.mp4   optional fading-trails animation
-and out/index.json lists all results for viewer/index.html.
+and out/index.json lists all results for index.html.
 """
 import argparse
 import json
@@ -23,9 +23,9 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-BG = (16, 13, 11)  # BGR, near-black with a warm tint
+BG = (16, 13, 11) 
 
-# shared with viewer/index.html; edit palettes.json to change colors in both
+# shared with index.html; edit palettes.json to change colors in both
 PALETTES = json.loads((Path(__file__).parent / "palettes.json").read_text())
 
 

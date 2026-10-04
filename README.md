@@ -6,7 +6,7 @@ Track branches and leaves in tree footage and draw how they move, as light lines
 pip install -r requirements.txt          # opencv-python, numpy (+ ffmpeg on PATH for browser-playable video)
 
 python trace_wind.py videos/*.mp4        # -> out/<name>/still.png, tracks.json, footage.mp4
-python -m http.server                    # then open http://localhost:8000/viewer/
+python -m http.server                    # then open http://localhost:8000/
 ```
 
 ## Pipeline
@@ -35,7 +35,7 @@ python trace_wind.py clip.mov --mask sky_mask.png                # white = track
 python trace_wind.py clip.mov --start 12 --duration 8 --preview
 ```
 
-## Viewer (`viewer/index.html`)
+## Viewer (`index.html`)
 
 - **Trace** mode builds up the whole drawing over time. **Trails** mode shows comet trails that fade, like watching the wind live.
 - **Color by**: direction of motion, speed, sway frequency, amplitude, or time of appearance.
