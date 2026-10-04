@@ -1,4 +1,4 @@
-# body sway
+# Body Sway
 
 Track branches and leaves in tree footage and draw how they move, as light lines on a dark background. Then view the results interactively.
 
